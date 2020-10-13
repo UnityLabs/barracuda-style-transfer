@@ -1,0 +1,88 @@
+﻿#pragma kernel StyleDepthMotion
+
+#include "UnityCG.cginc"
+
+Texture2D _CameraDepthTexture; // Unity depth texture
+SamplerState sampler_CameraDepthTexture;
+Texture2D _CameraMotionVectorsTexture; // Unity motion texture
+SamplerState sampler_CameraMotionVectorsTexture;
+RWTexture2D<float4> _StyleDepthMotionTex; // Target stylized depth + motion texture
+int _FrameWidth;
+int _FrameHeight;
+int _SkyHaloSize;
+int _HaloSize;
+
+
+[numthreads(8, 8, 1)]
+void StyleDepthMotion(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _FrameWidth || id.y >= _FrameHeight)
+		return;
+	int2 coord = id.xy;
+
+	//_StyleDepthMotionTex[id.xy] = float4(_CameraMotionVectorsTexture[coord].rg, Linear01Depth(UNITY_SAMPLE_DEPTH(_CameraDepthTexture[coord])), 1);
+	//return;
+
+	float2 mv1 = _CameraMotionVectorsTexture[coord].rg;
+	float2 newMV = mv1;
+	float depth1 = Linear01Depth(UNITY_SAMPLE_DEPTH(_CameraDepthTexture[coord]));
+	float newDepth = depth1;
+	
+	int haloSearch = _HaloSize;
+	if(depth1 >= 0.999)
+		haloSearch = _SkyHaloSize;
+	
+	if(haloSearch > 0)
+	{
+		float minDepth = depth1;
+		float2 minDepthMV = mv1;
+		int minDepthCount = 1;
+		int2 newDepthCoord = coord;
+		float newDepthDist = 0.0;
+		for (int x = -haloSearch; x <= haloSearch; x++)
+		{
+			for (int y = -haloSearch; y <= haloSearch; y++)
+			{
+				if (length(int2(x, y)) > haloSearch || (x == 0 && y ==0))// || (x % 2) ^ (y % 2) == true)
+					continue;
+				int2 tempCoord = coord + int2(x, y);
+				float depth2 = Linear01Depth(UNITY_SAMPLE_DEPTH(_CameraDepthTexture[tempCoord]));
+
+				// New min depth surface found
+				if (minDepth - depth2 > (minDepth + depth2) / 2.0f / 15.0f)
+				{
+					newDepthCoord = tempCoord;
+					newDepthDist = length(int2(x, y));
+					minDepth = depth2;
+					minDepthMV = _CameraMotionVectorsTexture[tempCoord].rg;
+					minDepthCount = 1;
+				}
+				// Same min depth surface
+				if (abs(minDepth - depth2) < (minDepth + depth2) / 2.0f / 15.0f)
+				{
+					float tempDist = length(int2(x, y));
+					if (tempDist < newDepthDist)
+					{
+						newDepthCoord = tempCoord;
+						newDepthDist = tempDist;
+					}
+					minDepthCount++;
+					minDepth = depth2;
+					//minDepth = (minDepth + depth2) / 2.0f;
+					//minDepth = minDepth * ((minDepthCount - 1) / (float)minDepthCount) + depth2 * (1.0 / (float)minDepthCount);
+					//minDepthMV = minDepthMV * ((minDepthCount - 1) / (float)minDepthCount) + _CameraMotionVectorsTexture[tempCoord].rg * _BFrameCount * (1.0 / (float)minDepthCount);
+				}
+			}
+		}
+		// If a closer depth with significant enough amount of pixel was found in neighbourhood
+		if(minDepthCount > 0 && abs(minDepth - depth1) > (minDepth + depth1) / 2.0f / 15.0f)
+		{
+			newDepth = minDepth;
+			//newMV = minDepthMV;
+			newMV = _CameraMotionVectorsTexture[newDepthCoord].rg;
+		}
+	}
+	
+	_StyleDepthMotionTex[id.xy] = float4(newMV.xy, newDepth, 0.0);
+	//_StyleDepthMotionTex[id.xy] = Linear01Depth(UNITY_SAMPLE_DEPTH(_CameraDepthTexture[id.xy]));
+}

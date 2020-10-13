@@ -1,0 +1,254 @@
+﻿#pragma kernel BFrameGenerator
+
+#include "UnityCG.cginc"
+
+SamplerState point_clamp_sampler;
+SamplerState linear_clamp_sampler;
+Texture2D<float4> _IFrame0SDMV;
+Texture2D<float4> _IFrame1SDMV;
+RWTexture2D<float4> _BFrame;
+sampler2D _IFrame0;
+sampler2D _IFrame1;
+int _FrameWidth;
+int _FrameHeight;
+int _BorderHaloSize;
+float2 _TexelSize;
+float _BFrameAlpha;
+float _PreviousBFrameAlpha;
+int _CurrentBFrame;
+#define ITERATIVE_STEPS 3
+#define NEIGHBOURHOOD_SIZE 5
+#define ERROR 1.0
+static const int2 _SearchInitKernel[5] =
+{
+	int2(0, 0),
+	int2(-1, -1),
+	int2(-1, 1),
+	int2(1, 1),
+	int2(1, -1)
+};
+
+
+float2 RemapValue(float2 s, float2 a1, float2 a2, float2 b1, float2 b2)
+{
+	return b1 + (s - a1) * (b2 - b1) / (a2 - a1);
+}
+
+bool UVIsWithinScreen(float2 uv)
+{
+	return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
+}
+
+float MirrorBorderFixValidity(float2 uv)
+{
+	float borderSize = _BorderHaloSize * _TexelSize.x;
+	float lerp = 1.0;
+	lerp = min(lerp, uv.x / borderSize);
+	lerp = min(lerp, (1.0 - uv.x) / borderSize);
+	lerp = min(lerp, uv.y / borderSize);
+	lerp = min(lerp, (1.0 - uv.y) / borderSize);
+	return pow(lerp, 3.0);
+}
+
+bool ChooseBestReprojection(inout float2 source, inout float depth, inout float error, float2 newSource, float newDepth, float newError)
+{
+	if(UVIsWithinScreen(newSource) == false)
+		return false;
+
+	bool sameSurface = depth - newDepth < (depth + newDepth) / 2.0 / 5.0;
+	if(newError <= ERROR * _TexelSize.x && (newError < error || sameSurface == false && newDepth < depth))
+	{
+		source = newSource;
+		depth = newDepth;
+		error = newError;
+		return true;
+	}
+	return false;
+}
+
+
+float2 GetIFrame0ForwardMotion(float2 uv, float scale)
+{
+	return _IFrame0SDMV.SampleLevel(linear_clamp_sampler, uv, 0.0).rg * scale;
+}
+
+float2 GetIFrame1BackwardMotion(float2 uv, float scale)
+{
+	return -_IFrame1SDMV.SampleLevel(linear_clamp_sampler, uv, 0.0).rg * scale;
+}
+
+float GetIFrame0Depth(float2 uv)
+{
+	return _IFrame0SDMV.SampleLevel(point_clamp_sampler, uv, 0.0).b;
+}
+
+float GetIFrame1Depth(float2 uv)
+{
+	return _IFrame1SDMV.SampleLevel(point_clamp_sampler, uv, 0.0).b;
+}
+
+
+void SearchIFrame0(float2 target, inout float2 source, out float depth, out float error)
+{
+	float scale = _BFrameAlpha;
+	for(int i = 0; i < ITERATIVE_STEPS; i++)
+	{
+		source = target - GetIFrame0ForwardMotion(source, scale);
+	}
+	error = length(target - (source + GetIFrame0ForwardMotion(source, scale)));
+	depth = GetIFrame0Depth(source);
+}
+
+void SearchIFrame1(float2 target, inout float2 source, out float depth, out float error)
+{
+	float scale = 1.0 - _BFrameAlpha;
+	for(int i = 0; i < ITERATIVE_STEPS; i++)
+	{
+		source = target - GetIFrame1BackwardMotion(source, scale);
+	}
+	error = length(target - (source + GetIFrame1BackwardMotion(source, scale)));
+	depth = GetIFrame1Depth(source);
+}
+
+void ReprojectIFrame(int2 targetPixel, float2 target, bool isBackward, out float2 source, out float depth, out float error, out bool lol)
+{
+	lol = false;
+	float scale = isBackward ? _BFrameAlpha : 1.0f - _BFrameAlpha;
+
+	// Init
+	source = target;
+	depth = 1.0;
+	error = 1.0;
+
+	// Target + Neighbourhood start
+	float2 texelSize = 1.0.rr / float2(_FrameWidth, _FrameHeight);
+	for(int i = 0; i < 5; i++)
+	{
+		float2 source2 = target + _SearchInitKernel[i] * texelSize * NEIGHBOURHOOD_SIZE;
+		float depth2 = 1.0;
+		float error2;
+		[branch]if(isBackward == true)
+			SearchIFrame0(target, source2, depth2, error2);
+		else
+			SearchIFrame1(target, source2, depth2, error2);
+		ChooseBestReprojection(source, depth, error, source2, depth2, error2);
+	}
+
+	// Alternate reverse start
+	float2 source3;
+	[branch]if(isBackward == true)
+		source3 = target + GetIFrame1BackwardMotion(target, scale);
+	else
+		source3 = target + GetIFrame0ForwardMotion(target, scale);
+	float depth3 = 1.0;
+	float error3;
+	[branch]if(isBackward == true)
+		SearchIFrame0(target, source3, depth3, error3);
+	else
+		SearchIFrame1(target, source3, depth3, error3);
+	ChooseBestReprojection(source, depth, error, source3, depth3, error3);
+
+	// Flag out of screen
+	if(UVIsWithinScreen(source) == false)
+		error = 1.0;
+}
+
+
+
+[numthreads(8, 8, 1)]
+void BFrameGenerator(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= _FrameWidth || id.y >= _FrameHeight)
+		return;
+
+	int2 pixel = id.xy;
+	float2 uv = pixel / (float2(_FrameWidth, _FrameHeight) - 1.0);
+	float2 halfTexel = 1.0 / float2(_FrameWidth, _FrameHeight) / 2.0;
+	float borderSize = _BorderHaloSize * _TexelSize.x;
+	uv = RemapValue(uv, 0.0.rr, 1.0.rr, 0.0.rr + borderSize.rr, 1.0.rr - borderSize.rr);
+	//uv = RemapValue(uv, 0.0.rr, 1.0.rr, 0.0.rr + halfTexel.xy, 1.0.rr - halfTexel.xy);
+	float4 result = float4(0, 0, 0, 1);
+
+	// Mirror Padding Fix requires running BFrameGenerator also when displaying pure iFrame. Early return it here
+	[branch]if (_CurrentBFrame == 0)
+	{
+		_BFrame[pixel] = float4(tex2Dlod(_IFrame0, float4(uv, 0, 0)).rgb, 1);
+		return;
+	}
+
+	float2 source0 = 0.0.rr;
+	float depth0 = 1.0.r;
+	float error0 = 0.0;
+	bool lol0;
+	ReprojectIFrame(pixel, uv, true, source0, depth0, error0, lol0);
+
+	float2 source1 = 0.0.rr;
+	float depth1 = 1.0.r;
+	float error1 = 0.0;
+	bool lol1;
+	ReprojectIFrame(pixel, uv, false, source1, depth1, error1, lol1);
+
+	float lerp0 = 1.0 - _BFrameAlpha;
+	float lerp1 = _BFrameAlpha;
+
+	// Absent MirrorPad border fix
+	lerp0 *= MirrorBorderFixValidity(source0);
+	lerp1 *= MirrorBorderFixValidity(source1);
+
+	if(error0 > ERROR * _TexelSize.x)
+	{
+		lerp0 = 0.0;
+		error0 = 1.0;
+	}
+	if(error1 > ERROR * _TexelSize.x)
+	{
+		lerp1 = 0.0;
+		error1 = 1.0;
+	}
+	if(lerp0 > 0.0 && lerp1 > 0.0 && (depth0 - depth1 > (depth0 + depth1) / 2.0 / 5.0))
+	{
+		lerp0 = 0.0;
+		error0 = 1.0;
+	}
+	if(lerp0 > 0.0 && lerp1 > 0.0 && (depth1 - depth0 > (depth0 + depth1) / 2.0 / 5.0))
+	{
+		lerp1 = 0.0;
+		error1 = 1.0;
+	}
+	if(lerp0 == 0.0 && lerp1 == 0.0)
+	{
+		source0 = uv;
+		source1 = uv;
+		lerp0 = 1.0 - _BFrameAlpha;
+		lerp1 = _BFrameAlpha;
+	}
+
+	// Fetch result
+	float3 iFrame0 = tex2Dlod(_IFrame0, float4(source0, 0, 0)).rgb;
+	float3 iFrame1 = tex2Dlod(_IFrame1, float4(source1, 0, 0)).rgb;
+	result.rgb =
+		iFrame0 * lerp0 / (lerp0 + lerp1)
+		+ iFrame1 * lerp1 / (lerp0 + lerp1);
+
+	/*result.rgb = iFrame0.rgb;
+	if(lerp0 == 0.0)
+		result.rgb = tex2Dlod(_IFrame0, float4(uv, 0, 0)).rgb;*/
+
+	// DEBUG DISPLAY
+	if(uv.y < 0.5)
+	{
+		//result.rgb = float3(error0 > ERROR * _TexelSize.x && error1 > ERROR * _TexelSize.x , 0, 0);
+		//result.rgb = float3(MirrorBorderFixValidity(source0), MirrorBorderFixValidity(source1), 0);
+		//result.rgb = float3(error0, error1, lol0 + lol1);
+		//result.rgb = float3(lol0, lol1, 0);
+		//result.rgb = float3(error0, error1, 0);
+		//result.rgb = float3(_IFrame0SDMV.SampleLevel(point_clamp_sampler, uv, 0.0).rg, 0) * 3;
+		//result.rgb = float3(lerp0, lerp1, 0);
+		/*if(uv.x < 0.5)
+			result.rgb = float3(_IFrame0SDMV.SampleLevel(point_clamp_sampler, uv, 0.0).rg, 0) * 3;
+		else
+			result.rgb = float3(_IFrame1SDMV.SampleLevel(point_clamp_sampler, uv, 0.0).rg, 0) * 3;*/
+	}
+
+	_BFrame[pixel] = float4(result.rgb, 1);
+}

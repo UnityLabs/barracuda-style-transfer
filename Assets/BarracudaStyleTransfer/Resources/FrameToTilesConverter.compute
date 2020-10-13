@@ -1,0 +1,157 @@
+﻿#pragma enable_d3d11_debug_symbols
+
+#pragma kernel FrameToTiles_NHWC CHANNELS_FIRST=0
+#pragma kernel FrameToTiles_NCHW CHANNELS_FIRST=1
+#pragma kernel TilesToFrame_NHWC CHANNELS_FIRST=0
+#pragma kernel TilesToFrame_NCHW CHANNELS_FIRST=1
+
+#include "Packages/com.unity.barracuda/Barracuda/Runtime/Core/Resources/Tensor.cginc" 
+
+#if CHANNELS_FIRST
+	#define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NCHW
+#else
+	#define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NHWC
+#endif
+
+TENSOR_DECL(X)
+TENSOR_DECL_RW(O)
+RWTexture2D<float4> _OutputRT;
+
+int _TileWidth;
+int _TileHeight;
+int _TileBorderSize;
+int _CurrentFrame;
+int _FrameWidth;
+int _FrameHeight;
+float4 _Bias;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// From UnityCG.cginc
+inline float LinearToGammaSpaceExact (float value)
+{
+    if (value <= 0.0F)
+        return 0.0F;
+    else if (value <= 0.0031308F)
+        return 12.92F * value;
+    else if (value < 1.0F)
+        return 1.055F * pow(value, 0.4166667F) - 0.055F;
+    else
+        return pow(value, 0.45454545F);
+}
+
+inline half3 LinearToGammaSpace (half3 linRGB)
+{
+    linRGB = max(linRGB, half3(0.h, 0.h, 0.h));
+    // An almost-perfect approximation from http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html?m=1
+    return max(1.055h * pow(linRGB, 0.416666667h) - 0.055h, 0.h);
+
+    // Exact version, useful for debugging.
+    //return half3(LinearToGammaSpaceExact(linRGB.r), LinearToGammaSpaceExact(linRGB.g), LinearToGammaSpaceExact(linRGB.b));
+}
+
+inline float GammaToLinearSpaceExact (float value)
+{
+    if (value <= 0.04045F)
+        return value / 12.92F;
+    else if (value < 1.0F)
+        return pow((value + 0.055F)/1.055F, 2.4F);
+    else
+        return pow(value, 2.2F);
+}
+
+inline half3 GammaToLinearSpace (half3 sRGB)
+{
+    // Approximate version from http://chilliant.blogspot.com.au/2012/08/srgb-approximations-for-hlsl.html?m=1
+    return sRGB * (sRGB * (sRGB * 0.305306011h + 0.682171111h) + 0.012522878h);
+
+    // Precise version, useful for debugging.
+    //return half3(GammaToLinearSpaceExact(sRGB.r), GammaToLinearSpaceExact(sRGB.g), GammaToLinearSpaceExact(sRGB.b));
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+[numthreads(1, 4, 4)]
+void KERNEL_FUNC(FrameToTiles)(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+	TENSOR_ARGS2(X, O);
+
+	int widthTiles = _FrameWidth / (float)_TileWidth;
+	int heightTiles = _FrameHeight / (float)_TileHeight;
+	int tileCount = widthTiles * heightTiles;
+
+	int x = dispatchThreadID.y;
+	if (x >= O.width)
+		return;
+	int y = dispatchThreadID.z;
+	if (y >= O.height)
+		return;
+
+	int2 currentTile2D = int2(_CurrentFrame % widthTiles, _CurrentFrame / (float)(widthTiles));
+	int2 frameCoord = currentTile2D * int2(_TileWidth, _TileHeight) - _TileBorderSize.xx + int2(x, y);
+
+	if (frameCoord.x >= _FrameWidth)
+		frameCoord.x = (_FrameWidth - 1) - (frameCoord.x - _FrameWidth);
+	if (frameCoord.y >= _FrameHeight)
+		frameCoord.y = (_FrameHeight - 1) - (frameCoord.y - _FrameHeight);
+	if (frameCoord.x < 0)
+		frameCoord.x = -frameCoord.x;
+	if (frameCoord.y < 0)
+		frameCoord.y = -frameCoord.y;
+
+	for (int c = 0; c < X.channels; ++c)
+	{
+		float v = X.Get(0, frameCoord.y, frameCoord.x, c);
+		O.Set(0, y, x, c, v);
+	}
+
+	/*float3 v = float3(X.Get(0, frameCoord.y, frameCoord.x, 2), X.Get(0, frameCoord.y, frameCoord.x, 1), X.Get(0, frameCoord.y, frameCoord.x, 0));
+	for (int c = 0; c < X.channels; ++c)
+		O.Set(0, y, x, c, v[c]);*/
+}
+
+
+[numthreads(1, 4, 4)]
+void KERNEL_FUNC(TilesToFrame)(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+	TENSOR_ARGS2(X, O);
+
+	int widthTiles = _FrameWidth / (float)_TileWidth;
+	int heightTiles = _FrameHeight / (float)_TileHeight;
+	int tileCount = widthTiles * heightTiles;
+
+	int x = dispatchThreadID.y;
+	if (x >= _TileWidth)
+		return;
+	int y = dispatchThreadID.z;
+	if (y >= _TileHeight)
+		return;
+
+	int2 currentTile2D = int2(_CurrentFrame % widthTiles, _CurrentFrame / (float)(widthTiles));
+	int2 frameCoord = currentTile2D * int2(_TileWidth, _TileHeight) + int2(x, y);
+	frameCoord.y = (_FrameHeight - 1 ) - frameCoord.y; // Writing into RenderTexture : need to reverse Y axis;
+
+	int2 tileCoord = int2(x, y) + _TileBorderSize.xx;
+
+	if(frameCoord.x < 0 || frameCoord.x >= _FrameWidth || frameCoord.y < 0 || frameCoord.y >= _FrameHeight)
+		return;
+
+	float4 v = float4(0, 0, 0, 1);
+	for (int c = 0; c < O.channels; ++c)
+	{
+		v[c] = X.Get(0, tileCoord.y, tileCoord.x, c);
+		//O.Set(0, frameCoord.y, frameCoord.x, c, v);
+	}
+
+    //Add bias
+	v += _Bias;
+
+    ////////////////////////////////////
+    // ADELE STYLE TRANSFER HACK, network was trained in sRGB space so execute it in that space.
+    v.xyz = GammaToLinearSpace(v.xyz);
+    // Convert to sRGB
+	//v = pow(v, 2.2);
+    ////////////////////////////////////
+
+
+	_OutputRT[frameCoord.xy] = v;
+}
