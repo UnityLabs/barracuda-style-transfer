@@ -4,14 +4,14 @@
 Style transfer applyed to [Book of the Dead Environement](https://assetstore.unity.com/packages/essentials/tutorial-projects/book-of-the-dead-environment-121175) via 
 [Unity Barracuda](https://github.com/Unity-Technologies/barracuda-release).
 
-This repo is the companion code for the [Style Transfer blog post](http://linkToDo) and present how to setup the style transfer to a sample scene.
+This repo is the companion code for the [Style Transfer blog post](http://linkToDo) and presents how to setup the style transfer in a sample scene.
 
 # Instructions:
 - Open BarracudaStyleTransfer/SampleScene/SampleScene.unity (tested with Unity 2019.4.1f1, should work with Unity versions from 2018.4 LTS)
 - Run the scene. It can take some time to start due to the loading of the network.
 - The style transfer script is found on the Style Transfer Camera object
 
-# Constrols:
+# Controls:
 - Left click to enable/disable style transfer.
 - Right click to cycle through the styles.
 - Mouse wheel up/down to increase/decrease the amount of framerate upsampling (see notes below)
@@ -27,5 +27,5 @@ This repo is the companion code for the [Style Transfer blog post](http://linkTo
   - **Framerate Upsample Factor** : by how much to (theoretically) multiply the framerate. Also corresponds to how many frames the style transfer computation will be spread on.
 
 Known bugs/limitations:
-- When profiler is opened console will be spammed with 'Profiler tag mismatched' errors. This will be fixed in Barracuda 1.2.0
-- Network were trained using sRGB data, code in this repo explicitely handle convertion from texture to sRGB tensor. Support will be added to Barracuda in a latter version.
+- When profiler is opened the console will be spammed with 'Profiler tag mismatched' errors. This will be fixed in Barracuda 1.2.0
+- The network was trained using sRGB data, the code in this repo explicitely handles conversion from texture to sRGB tensor. Support will be added to Barracuda in a later version.
