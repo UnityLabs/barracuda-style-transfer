@@ -8,9 +8,9 @@
 #include "Packages/com.unity.barracuda/Barracuda/Runtime/Core/Resources/Tensor.cginc" 
 
 #if CHANNELS_FIRST
-	#define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NCHW
+    #define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NCHW
 #else
-	#define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NHWC
+    #define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NHWC
 #endif
 
 TENSOR_DECL(X)
@@ -73,85 +73,85 @@ inline half3 GammaToLinearSpace (half3 sRGB)
 [numthreads(1, 4, 4)]
 void KERNEL_FUNC(FrameToTiles)(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-	TENSOR_ARGS2(X, O);
+    TENSOR_ARGS2(X, O);
 
-	int widthTiles = _FrameWidth / (float)_TileWidth;
-	int heightTiles = _FrameHeight / (float)_TileHeight;
-	int tileCount = widthTiles * heightTiles;
+    int widthTiles = _FrameWidth / (float)_TileWidth;
+    int heightTiles = _FrameHeight / (float)_TileHeight;
+    int tileCount = widthTiles * heightTiles;
 
-	int x = dispatchThreadID.y;
-	if (x >= O.width)
-		return;
-	int y = dispatchThreadID.z;
-	if (y >= O.height)
-		return;
+    int x = dispatchThreadID.y;
+    if (x >= O.width)
+        return;
+    int y = dispatchThreadID.z;
+    if (y >= O.height)
+        return;
 
-	int2 currentTile2D = int2(_CurrentFrame % widthTiles, _CurrentFrame / (float)(widthTiles));
-	int2 frameCoord = currentTile2D * int2(_TileWidth, _TileHeight) - _TileBorderSize.xx + int2(x, y);
+    int2 currentTile2D = int2(_CurrentFrame % widthTiles, _CurrentFrame / (float)(widthTiles));
+    int2 frameCoord = currentTile2D * int2(_TileWidth, _TileHeight) - _TileBorderSize.xx + int2(x, y);
 
-	if (frameCoord.x >= _FrameWidth)
-		frameCoord.x = (_FrameWidth - 1) - (frameCoord.x - _FrameWidth);
-	if (frameCoord.y >= _FrameHeight)
-		frameCoord.y = (_FrameHeight - 1) - (frameCoord.y - _FrameHeight);
-	if (frameCoord.x < 0)
-		frameCoord.x = -frameCoord.x;
-	if (frameCoord.y < 0)
-		frameCoord.y = -frameCoord.y;
+    if (frameCoord.x >= _FrameWidth)
+        frameCoord.x = (_FrameWidth - 1) - (frameCoord.x - _FrameWidth);
+    if (frameCoord.y >= _FrameHeight)
+        frameCoord.y = (_FrameHeight - 1) - (frameCoord.y - _FrameHeight);
+    if (frameCoord.x < 0)
+        frameCoord.x = -frameCoord.x;
+    if (frameCoord.y < 0)
+        frameCoord.y = -frameCoord.y;
 
-	for (int c = 0; c < X.channels; ++c)
-	{
-		float v = X.Get(0, frameCoord.y, frameCoord.x, c);
-		O.Set(0, y, x, c, v);
-	}
+    for (int c = 0; c < X.channels; ++c)
+    {
+        float v = X.Get(0, frameCoord.y, frameCoord.x, c);
+        O.Set(0, y, x, c, v);
+    }
 
-	/*float3 v = float3(X.Get(0, frameCoord.y, frameCoord.x, 2), X.Get(0, frameCoord.y, frameCoord.x, 1), X.Get(0, frameCoord.y, frameCoord.x, 0));
-	for (int c = 0; c < X.channels; ++c)
-		O.Set(0, y, x, c, v[c]);*/
+    /*float3 v = float3(X.Get(0, frameCoord.y, frameCoord.x, 2), X.Get(0, frameCoord.y, frameCoord.x, 1), X.Get(0, frameCoord.y, frameCoord.x, 0));
+    for (int c = 0; c < X.channels; ++c)
+        O.Set(0, y, x, c, v[c]);*/
 }
 
 
 [numthreads(1, 4, 4)]
 void KERNEL_FUNC(TilesToFrame)(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
-	TENSOR_ARGS2(X, O);
+    TENSOR_ARGS2(X, O);
 
-	int widthTiles = _FrameWidth / (float)_TileWidth;
-	int heightTiles = _FrameHeight / (float)_TileHeight;
-	int tileCount = widthTiles * heightTiles;
+    int widthTiles = _FrameWidth / (float)_TileWidth;
+    int heightTiles = _FrameHeight / (float)_TileHeight;
+    int tileCount = widthTiles * heightTiles;
 
-	int x = dispatchThreadID.y;
-	if (x >= _TileWidth)
-		return;
-	int y = dispatchThreadID.z;
-	if (y >= _TileHeight)
-		return;
+    int x = dispatchThreadID.y;
+    if (x >= _TileWidth)
+        return;
+    int y = dispatchThreadID.z;
+    if (y >= _TileHeight)
+        return;
 
-	int2 currentTile2D = int2(_CurrentFrame % widthTiles, _CurrentFrame / (float)(widthTiles));
-	int2 frameCoord = currentTile2D * int2(_TileWidth, _TileHeight) + int2(x, y);
-	frameCoord.y = (_FrameHeight - 1 ) - frameCoord.y; // Writing into RenderTexture : need to reverse Y axis;
+    int2 currentTile2D = int2(_CurrentFrame % widthTiles, _CurrentFrame / (float)(widthTiles));
+    int2 frameCoord = currentTile2D * int2(_TileWidth, _TileHeight) + int2(x, y);
+    frameCoord.y = (_FrameHeight - 1 ) - frameCoord.y; // Writing into RenderTexture : need to reverse Y axis;
 
-	int2 tileCoord = int2(x, y) + _TileBorderSize.xx;
+    int2 tileCoord = int2(x, y) + _TileBorderSize.xx;
 
-	if(frameCoord.x < 0 || frameCoord.x >= _FrameWidth || frameCoord.y < 0 || frameCoord.y >= _FrameHeight)
-		return;
+    if(frameCoord.x < 0 || frameCoord.x >= _FrameWidth || frameCoord.y < 0 || frameCoord.y >= _FrameHeight)
+        return;
 
-	float4 v = float4(0, 0, 0, 1);
-	for (int c = 0; c < O.channels; ++c)
-	{
-		v[c] = X.Get(0, tileCoord.y, tileCoord.x, c);
-		//O.Set(0, frameCoord.y, frameCoord.x, c, v);
-	}
+    float4 v = float4(0, 0, 0, 1);
+    for (int c = 0; c < O.channels; ++c)
+    {
+        v[c] = X.Get(0, tileCoord.y, tileCoord.x, c);
+        //O.Set(0, frameCoord.y, frameCoord.x, c, v);
+    }
 
     //Add bias
-	v += _Bias;
+    v += _Bias;
 
     ////////////////////////////////////
     // ADELE STYLE TRANSFER HACK, network was trained in sRGB space so execute it in that space.
     v.xyz = GammaToLinearSpace(v.xyz);
     // Convert to sRGB
-	//v = pow(v, 2.2);
+    //v = pow(v, 2.2);
     ////////////////////////////////////
 
 
-	_OutputRT[frameCoord.xy] = v;
+    _OutputRT[frameCoord.xy] = v;
 }
