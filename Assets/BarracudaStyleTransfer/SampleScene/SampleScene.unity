@@ -319,7 +319,7 @@ Transform:
   m_GameObject: {fileID: 729523348}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 2.0100002, y: 0.089999914, z: -0.2800007}
-  m_LocalScale: {x: 0.25, y: 0.25, z: 0.25}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_Children: []
   m_Father: {fileID: 1742840896}
   m_RootOrder: 1
@@ -431,6 +431,7 @@ MonoBehaviour:
     forceBilinearUpsample2DInModel: 1
     channelsOrder: 1
     shouldSaveStyleTransferDataAsAsset: 1
+    shouldUseSRGBTensor: 1
   Notes1: "Style Definition ->\n    Image: the style.\n    Reprojection Halo: for
     temporal upsampling. Size in pixels of the halo added around objects by this
     style.\r\n    Reprojection Halo Sky: same, for halos of objects in front of the
@@ -835,7 +836,7 @@ Transform:
   m_GameObject: {fileID: 1702159644}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: -2.55, y: 0, z: 0}
-  m_LocalScale: {x: 0.25, y: 0.25, z: 0.25}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_Children: []
   m_Father: {fileID: 1742840896}
   m_RootOrder: 0
@@ -1006,7 +1007,7 @@ Transform:
   m_GameObject: {fileID: 1976762319}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: -0.17, y: 0.09, z: -0.28}
-  m_LocalScale: {x: 0.25, y: 0.25, z: 0.25}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_Children: []
   m_Father: {fileID: 1742840896}
   m_RootOrder: 2
