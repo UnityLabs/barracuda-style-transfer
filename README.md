@@ -7,7 +7,7 @@ Style transfer applyed to [Book of the Dead Environment](https://assetstore.unit
 This repo is the companion code for the [Style Transfer blog post](http://linkToDo) and presents how to setup the style transfer in a sample scene.
 
 # Instructions:
-- Open BarracudaStyleTransfer/SampleScene/SampleScene.unity (tested with Unity 2019.4.1f1, 2020.x should also work)
+- Open BarracudaStyleTransfer/SampleScene/SampleScene.unity with Unity 2019.4.1f1 LTS (2020.x should also work)
 - Run the scene. It can take some time to start due to the loading of the network.
 - The style transfer script is found on the Style Transfer Camera object
 
