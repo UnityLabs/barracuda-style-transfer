@@ -1,7 +1,7 @@
 # Barracuda Style Transfer code sample.
 
 ![Style transfer applyed to Book of the Dead Environement](https://github.com/Unity-Technologies/barracuda-release/raw/release/1.1.1/Documentation~/images/BarracudaLanding.png)
-Style transfer applyed to [Book of the Dead Environement](https://assetstore.unity.com/packages/essentials/tutorial-projects/book-of-the-dead-environment-121175) via 
+Style transfer applyed to [Book of the Dead Environment](https://assetstore.unity.com/packages/essentials/tutorial-projects/book-of-the-dead-environment-121175) via 
 [Unity Barracuda](https://github.com/Unity-Technologies/barracuda-release).
 
 This repo is the companion code for the [Style Transfer blog post](http://linkToDo) and presents how to setup the style transfer in a sample scene.
