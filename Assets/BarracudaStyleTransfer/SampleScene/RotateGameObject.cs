@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class RotateCube : MonoBehaviour
+public class RotateGameObject : MonoBehaviour
 {
     public float rotateSpeed;
     public Vector3 rotateAxis;
