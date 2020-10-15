@@ -375,7 +375,7 @@ public class BarracudaStyleTransfer : MonoBehaviour
 
                     input = new Tensor(source, 3);
                     CustomPinTensorFromTexture(input);
-                    inferenceCoroutine = worker.ExecuteAsync(input);
+                    inferenceCoroutine = worker.StartManualSchedule(input);
                     inferenceCurrentLayer = 0;
                 }
                 // Execute divided workload for this frame
