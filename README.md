@@ -4,7 +4,7 @@
 Style transfer applyed to [Book of the Dead Environment](https://assetstore.unity.com/packages/essentials/tutorial-projects/book-of-the-dead-environment-121175) via 
 [Unity Barracuda](https://github.com/Unity-Technologies/barracuda-release).
 
-This repo is the companion code for the [Style Transfer blog post](http://linkToDo) and presents how to setup the style transfer in a sample scene.
+This repo is the companion code for the [Style Transfer blog post](https://blogs.unity3d.com/2020/11/25/real-time-style-transfer-in-unity-using-deep-neural-networks/) and presents how to setup the style transfer in a sample scene.
 
 # Instructions:
 - Open BarracudaStyleTransfer/SampleScene/SampleScene.unity with Unity 2019.4.1f1 LTS (2020.x should also work)
