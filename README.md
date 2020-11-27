@@ -11,7 +11,12 @@ This repo is the companion code for the [Style Transfer blog post](https://blogs
 - Run the scene. It can take some time to start due to the loading of the network.
 - The style transfer script is found on the Style Transfer Camera object
 
-Note: Only **GPU workers** are supported.
+> #### Important: 
+> - Only **GPU workers** are supported.
+> - Only desktop are supported.
+> - Use Barracuda 1.1.2-preview (will be updated soon).
+
+Note: 
 
 # Controls:
 - Left click to enable/disable style transfer.
@@ -29,5 +34,5 @@ Note: Only **GPU workers** are supported.
   - **Framerate Upsample Factor** : by how much to (theoretically) multiply the framerate. Also corresponds to how many frames the style transfer computation will be spread on.
 
 Known bugs/limitations:
-- When profiler is opened the console will be spammed with 'Profiler tag mismatched' errors. This will be fixed in Barracuda 1.2.0
+- When profiler is opened the console will be spammed with 'Profiler tag mismatched' errors.
 - The network was trained using sRGB data, the code in this repo explicitely handles conversion from texture to sRGB tensor. Support will be added to Barracuda in a later version.
