@@ -11,12 +11,11 @@ This repo is the companion code for the [Style Transfer blog post](https://blogs
 - Run the scene. It can take some time to start due to the loading of the network.
 - The style transfer script is found on the Style Transfer Camera object
 
+
 > #### Important: 
 > - Only **GPU workers** are supported.
 > - Only desktop are supported.
 > - Use Barracuda 1.1.2-preview (will be updated soon).
-
-Note: 
 
 # Controls:
 - Left click to enable/disable style transfer.
