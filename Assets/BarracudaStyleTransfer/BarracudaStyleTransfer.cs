@@ -8,6 +8,7 @@ using UnityEngine.Rendering;
 using Unity.Barracuda;
 using Unity.Mathematics;
 using UnityEditor;
+using UnityEditor.Callbacks;
 using UnityEngine.Profiling;
 using UnityEngine.UI;
 
@@ -1038,5 +1039,13 @@ public class BarracudaStyleTransfer : MonoBehaviour
         }
 
         return tensorData;
+    }
+    
+    [PostProcessScene]
+    public static void OnPostprocessScene()
+    {
+        #if !UNITY_STANDALONE && !UNITY_EDITOR
+            throw new Exception("PLATFORM NOT SUPPORTED BY THIS DEMO");
+        #endif
     }
 }
