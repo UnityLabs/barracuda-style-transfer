@@ -8,6 +8,7 @@ using UnityEngine.Rendering;
 using Unity.Barracuda;
 using Unity.Mathematics;
 using UnityEditor;
+using UnityEngine.Profiling;
 using UnityEngine.UI;
 
 
@@ -887,6 +888,56 @@ public class BarracudaStyleTransfer : MonoBehaviour
             res++;
         return res;
     }
+    
+    private class CustomComputeKernel
+    {
+        public readonly int kernelIndex;
+        public readonly ComputeShader shader;
+
+        private readonly string kernelName;
+        private readonly uint threadGroupSizeX;
+        private readonly uint threadGroupSizeY;
+        private readonly uint threadGroupSizeZ;
+        
+        public CustomComputeKernel(ComputeShader cs, string kn)
+        {
+            string kernelNameWithChannelsOrder = kn + (ComputeInfo.channelsOrder == ComputeInfo.ChannelsOrder.NHWC ? "_NHWC" : "_NCHW");
+            if (!cs.HasKernel(kernelNameWithChannelsOrder) && !cs.HasKernel(kn))
+                throw new ArgumentException($"Kernel {kn} and {kernelNameWithChannelsOrder} are both missing");
+            
+            shader = cs;
+            kernelName = cs.HasKernel(kernelNameWithChannelsOrder)?kernelNameWithChannelsOrder:kn;
+            kernelIndex = shader.FindKernel(kernelName);
+            shader.GetKernelThreadGroupSizes(kernelIndex, out threadGroupSizeX, out threadGroupSizeY, out threadGroupSizeZ);
+        }
+        
+        private static int IntDivCeil(int v, int div)
+        {
+            return (v + div - 1) / div;
+        }
+        
+        public void Dispatch(int workItemsX, int workItemsY, int workItemsZ)
+        {
+            Profiler.BeginSample(kernelName);
+            var x = IntDivCeil(workItemsX, (int) threadGroupSizeX);
+            var y = IntDivCeil(workItemsY, (int) threadGroupSizeY);
+            var z = IntDivCeil(workItemsZ, (int) threadGroupSizeZ);
+            shader.Dispatch(kernelIndex, x, y, z);
+            Profiler.EndSample();
+        }
+        
+        public void SetTensor(string name, TensorShape shape, ComputeBuffer buffer, Int64 dataOffset = 0)
+        {
+            var shapeId = Shader.PropertyToID(name + "declShape");
+            var infoId = Shader.PropertyToID(name + "declInfo");
+            var dataId = Shader.PropertyToID(name + "data");
+            int[] tensorShape = {shape.batch, shape.height, shape.width, shape.channels};
+            int[] tensorInfo = {(int)dataOffset, shape.length};
+            shader.SetInts(shapeId, tensorShape);
+            shader.SetInts(infoId, tensorInfo);
+            shader.SetBuffer(kernelIndex, dataId, buffer);
+        }
+    }
 
     private void CustomTensorToRenderTexture(Tensor X, RenderTexture target, int batch, int fromChannel, Vector4 scale, Vector4 bias, Texture3D lut = null)
     {
@@ -906,18 +957,19 @@ public class BarracudaStyleTransfer : MonoBehaviour
             target.enableRandomWrite = true;
             target.Create();
         }
-
+        
         var gpuBackend = new ReferenceComputeOps(ComputeShaderSingleton.Instance.referenceKernels);
-        var fn = new ComputeFunc(tensorToTextureSRGB, "TensorToTexture"+ (lut == null?"NoLUT":"3DLUT"));
-        gpuBackend.SetTensor(fn, "X", X);
-        fn.SetTexture("O", target);
+        var fn = new CustomComputeKernel(tensorToTextureSRGB, "TensorToTexture"+ (lut == null?"NoLUT":"3DLUT"));
+        var XonDevice = gpuBackend.Pin(X);
+        fn.SetTensor("X", X.shape, XonDevice.buffer, XonDevice.offset);
+        fn.shader.SetTexture(fn.kernelIndex, "Otex2D", target);
         fn.shader.SetVector("_Scale", scale);
         fn.shader.SetVector("_Bias", bias);
         fn.shader.SetInts("_Pad", new int[] { batch, 0, 0, fromChannel });
         fn.shader.SetBool("_FlipY", true);
         if (lut != null)
         {
-            fn.SetTexture("X", lut);
+            fn.shader.SetTexture(fn.kernelIndex, "Otex3D", lut);
             fn.shader.SetVector("_LutParams", new Vector2(1f / lut.width, lut.width - 1f));
         }
 
@@ -948,7 +1000,7 @@ public class BarracudaStyleTransfer : MonoBehaviour
         //Here we handle custom tensor Pin from texture when tensor is to contain data in sRGB color space.
         //This is important for this demo as network was trained with data is sRGB color space.
         //Direct support for this will be added in a latter revision of Barracuda. 
-        var fn = new ComputeFunc(tensorToTextureSRGB, "TextureToTensor");
+        var fn = new CustomComputeKernel(tensorToTextureSRGB, "TextureToTensor");
         var tensorData = new ComputeTensorData(texData.shape, name, ComputeInfo.channelsOrder, false);
 
         fn.SetTensor("O", texData.shape, tensorData.buffer);
@@ -972,7 +1024,7 @@ public class BarracudaStyleTransfer : MonoBehaviour
             //var srcChannelMask = TextureFormatUtils.FormatToChannelMask(tex, texData.interpretPixelAsChannels);
             Color srcChannelMask = Color.white;
 
-            fn.SetTexture("X", tex);
+            fn.shader.SetTexture(fn.kernelIndex, "Xtex2D", tex);
             fn.shader.SetInts("_Pool", new int [] {tex.width, tex.height});
             fn.shader.SetInts("_Pad", offsets);
             fn.shader.SetInts("_ChannelWriteMask", new [] {(int)srcChannelMask[0], (int)srcChannelMask[1], (int)srcChannelMask[2], (int)srcChannelMask[3] });
