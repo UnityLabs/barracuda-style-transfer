@@ -33,5 +33,4 @@ This repo is the companion code for the [Style Transfer blog post](https://blogs
   - **Framerate Upsample Factor** : by how much to (theoretically) multiply the framerate. Also corresponds to how many frames the style transfer computation will be spread on.
 
 Known bugs/limitations:
-- When profiler is opened the console will be spammed with 'Profiler tag mismatched' errors.
 - The network was trained using sRGB data, the code in this repo explicitely handles conversion from texture to sRGB tensor. Support will be added to Barracuda in a later version.
