@@ -15,7 +15,7 @@ This repo is the companion code for the [Style Transfer blog post](https://blogs
 > #### Important: 
 > - Only **GPU workers** are supported.
 > - Only desktop are supported.
-> - Use Barracuda 1.1.2-preview (will be updated soon).
+> - Use Barracuda 3.0.0.
 
 # Controls:
 - Left click to enable/disable style transfer.
