@@ -16,6 +16,13 @@ float2 _TexelSize;
 float _BFrameAlpha;
 float _PreviousBFrameAlpha;
 int _CurrentBFrame;
+
+bool _DisplayInset;
+Texture2D<float4> _StyleImageSrgb;
+int2 _StyleImageSrgb_TexelSize;
+int2 _StyleInsetBottomLeftOffset;
+int _StyleInsetBorderWidth;
+
 #define ITERATIVE_STEPS 3
 #define NEIGHBOURHOOD_SIZE 5
 #define ERROR 1.0
@@ -153,7 +160,29 @@ void ReprojectIFrame(int2 targetPixel, float2 target, bool isBackward, out float
         error = 1.0;
 }
 
-
+void DrawBFramePixel(int2 pixel, float4 rgba)
+{
+    int2 insetPixel = pixel - _StyleInsetBottomLeftOffset;
+    if (_DisplayInset &&
+        0 <= insetPixel.x && insetPixel.x < _StyleImageSrgb_TexelSize.x + 2 * _StyleInsetBorderWidth &&
+        0 <= insetPixel.y && insetPixel.y < _StyleImageSrgb_TexelSize.y + 2 * _StyleInsetBorderWidth)
+    {
+        insetPixel -= _StyleInsetBorderWidth;
+        if (0 <= insetPixel.x && insetPixel.x < _StyleImageSrgb_TexelSize.x &&
+            0 <= insetPixel.y && insetPixel.y < _StyleImageSrgb_TexelSize.y)
+        {
+            _BFrame[pixel] = _StyleImageSrgb[insetPixel];
+        }
+        else
+        {
+            _BFrame[pixel] = float4(1,1,1,1);
+        }
+    }
+    else
+    {
+        _BFrame[pixel] = rgba;
+    }
+}
 
 [numthreads(8, 8, 1)]
 void BFrameGenerator(uint3 id : SV_DispatchThreadID)
@@ -172,7 +201,7 @@ void BFrameGenerator(uint3 id : SV_DispatchThreadID)
     // Mirror Padding Fix requires running BFrameGenerator also when displaying pure iFrame. Early return it here
     [branch]if (_CurrentBFrame == 0)
     {
-        _BFrame[pixel] = float4(tex2Dlod(_IFrame0, float4(uv, 0, 0)).rgb, 1);
+        DrawBFramePixel(pixel, float4(tex2Dlod(_IFrame0, float4(uv, 0, 0)).rgb, 1));
         return;
     }
 
@@ -250,5 +279,5 @@ void BFrameGenerator(uint3 id : SV_DispatchThreadID)
             result.rgb = float3(_IFrame1SDMV.SampleLevel(point_clamp_sampler, uv, 0.0).rg, 0) * 3;*/
     }
 
-    _BFrame[pixel] = float4(result.rgb, 1);
+    DrawBFramePixel(pixel, float4(result.rgb, 1));
 }

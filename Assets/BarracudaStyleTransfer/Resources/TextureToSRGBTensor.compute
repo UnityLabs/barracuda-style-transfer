@@ -10,7 +10,7 @@
 #pragma kernel TensorToTexture3DLUT_NHWC SUFFIX=3DLUT APPLY_3D_LUT=1 CHANNELS_FIRST=0
 #pragma kernel TensorToTexture3DLUT_NCHW SUFFIX=3DLUT APPLY_3D_LUT=1 CHANNELS_FIRST=1
 
-#include "Packages/com.unity.barracuda/Barracuda/Runtime/Core/Resources/Tensor.cginc"
+#include "Packages/com.unity.barracuda/Barracuda/Runtime/Core/Resources/Barracuda/Tensor.cginc"
 
 #if CHANNELS_FIRST
     #define FUNC_NAME(KERNEL, SUFFIX) KERNEL##SUFFIX##_NCHW
