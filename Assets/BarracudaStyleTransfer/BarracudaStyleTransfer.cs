@@ -206,6 +206,8 @@ public class BarracudaStyleTransfer : MonoBehaviour
         //Prepare style transfer prediction and runtime worker at load time (to avoid memory allocation at runtime)
         PrepareStylePrediction();
         CreateBarracudaWorker();
+
+        SetupStyleTransfer();
     }
 
     void Update()
@@ -423,14 +425,16 @@ public class BarracudaStyleTransfer : MonoBehaviour
                 bFrameGenerator.SetFloat("_BFrameAlpha", Time.frameCount < 8 ? 0.0f : currentFrame / (float)(frameRateUpsampleFactor));
                 bFrameGenerator.SetFloat("_PreviousBFrameAlpha", currentFrame <= 1 ? -1.0f : (currentFrame - 1) / (float)(frameRateUpsampleFactor));
                 bFrameGenerator.SetInt("_CurrentBFrame", currentFrame);
+
+                bFrameGenerator.SetBool("_DisplayInset", shouldApplyStyleTransfer && shouldDisplayInset);
+                bFrameGenerator.SetTexture(0, "_StyleImageSrgb", styleImageSrgb);
+                bFrameGenerator.SetInts("_StyleImageSrgb_TexelSize", styleImageSrgb.width, styleImageSrgb.height);
+                bFrameGenerator.SetInts("_StyleInsetBottomLeftOffset", (int)styleInsetBottomLeftOffset.x, (int)styleInsetBottomLeftOffset.y);
+                bFrameGenerator.SetInt("_StyleInsetBorderWidth", styleInsetBorderWidth);
+
                 bFrameGenerator.Dispatch(0, (int)Mathf.Ceil(iFrame2SDMV.width / 8.0f), (int)Mathf.Ceil(iFrame2SDMV.height / 8.0f), 1);
             }
 
-            if (shouldApplyStyleTransfer == true && shouldDisplayInset == true)
-            {
-                Graphics.CopyTexture(whiteBorder, 0, 0, 0, 0, whiteBorder.width, whiteBorder.height, bFrame, 0, 0, (int)styleInsetBottomLeftOffset.x - styleInsetBorderWidth, (int)styleInsetBottomLeftOffset.y - styleInsetBorderWidth);
-                Graphics.CopyTexture(styleImageSrgb, 0, 0, 0, 0, styleImageSrgb.width, styleImageSrgb.height, bFrame, 0, 0, (int)styleInsetBottomLeftOffset.x, (int)styleInsetBottomLeftOffset.y);
-            }
             Graphics.Blit(bFrame, destination);
         }
 
@@ -490,8 +494,8 @@ public class BarracudaStyleTransfer : MonoBehaviour
                 tensors[0][j] = predictionAlphasBetasData[savedAlphaBetasIndex][j];
             for (int j = 0; j < channels; j++)
                 tensors[1][j] = predictionAlphasBetasData[savedAlphaBetasIndex + 1][j];
-            tensors[0].FlushCache();
-            tensors[1].FlushCache();
+            tensors[0].FlushCache(true);
+            tensors[1].FlushCache(true);
             savedAlphaBetasIndex += 2;
         }
     }
@@ -630,12 +634,11 @@ public class BarracudaStyleTransfer : MonoBehaviour
                 layer.datasets[1].offset = channels;
                 layer.datasets[1].length = channels;
 
-                float[] data = new float[channels * 2];
-                for (int j = 0; j < data.Length / 2; j++)
-                    data[j] = 1.0f;
-                for (int j = data.Length / 2; j < data.Length; j++)
-                    data[j] = 0.0f;
-                layer.weights = data;
+                layer.weights = new BarracudaArray(channels * 2);
+                for (int j = 0; j < layer.weights.Length / 2; j++)
+                    layer.weights[j] = 1.0f;
+                for (int j = layer.weights.Length / 2; j < layer.weights.Length; j++)
+                    layer.weights[j] = 0.0f;
             }
 
             if (layer.type != Layer.Type.StridedSlice && layer.name.Contains("StyleNetwork/"))
@@ -767,12 +770,11 @@ public class BarracudaStyleTransfer : MonoBehaviour
 
                     layerNameToPatch.Add(layer.name);
 
-                    float[] data = new float[channels * 2];
-                    for (int j = 0; j < data.Length / 2; j++)
-                        data[j] = predictionAlphasBetasData[savedAlphaBetasIndex][j];
-                    for (int j = data.Length / 2; j < data.Length; j++)
-                        data[j] = predictionAlphasBetasData[savedAlphaBetasIndex + 1][j - data.Length / 2];
-                    layer.weights = data;
+                    layer.weights = new BarracudaArray(channels * 2);
+                    for (int j = 0; j < layer.weights.Length / 2; j++)
+                        layer.weights[j] = predictionAlphasBetasData[savedAlphaBetasIndex][j];
+                    for (int j = layer.weights.Length / 2; j < layer.weights.Length; j++)
+                        layer.weights[j] = predictionAlphasBetasData[savedAlphaBetasIndex + 1][j - layer.weights.Length / 2];
 
                     savedAlphaBetasIndex += 2;
                 }
@@ -790,12 +792,11 @@ public class BarracudaStyleTransfer : MonoBehaviour
                     layer.datasets[1].offset = channels;
                     layer.datasets[1].length = channels;
 
-                    float[] data = new float[channels * 2];
-                    for (int j = 0; j < data.Length / 2; j++)
-                        data[j] = 1.0f;
-                    for (int j = data.Length / 2; j < data.Length; j++)
-                        data[j] = 0.0f;
-                    layer.weights = data;
+                    layer.weights = new BarracudaArray(channels * 2);
+                    for (int j = 0; j < layer.weights.Length / 2; j++)
+                        layer.weights[j] = 1.0f;
+                    for (int j = layer.weights.Length / 2; j < layer.weights.Length; j++)
+                        layer.weights[j] = 0.0f;
                 }
             }
         }
@@ -958,8 +959,8 @@ public class BarracudaStyleTransfer : MonoBehaviour
             target.enableRandomWrite = true;
             target.Create();
         }
-        
-        var gpuBackend = new ReferenceComputeOps(ComputeShaderSingleton.Instance.referenceKernels);
+
+        var gpuBackend = new ReferenceComputeOps();
         var fn = new CustomComputeKernel(tensorToTextureSRGB, "TensorToTexture"+ (lut == null?"NoLUT":"3DLUT"));
         var XonDevice = gpuBackend.Pin(X);
         fn.SetTensor("X", X.shape, XonDevice.buffer, XonDevice.offset);
